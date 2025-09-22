@@ -1,6 +1,3 @@
-#!/usr/bin/env python3 python3 chmod +x ultimate_shell_gen.py
-# -*- coding: utf-8 -*-
-
 import sys
 import os
 import base64
